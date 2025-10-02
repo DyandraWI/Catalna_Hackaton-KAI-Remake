@@ -17,8 +17,8 @@ function Logout({ onLoggedOut }) {
   useEffect(() => {
     localStorage.removeItem("user_profile");
     onLoggedOut && onLoggedOut();
-    // redirect to login
-    window.location.href = "/login";
+    // redirect to landing page
+    window.location.href = "/"; // Ubah dari "/login" ke "/"
   }, []);
   return null;
 }
