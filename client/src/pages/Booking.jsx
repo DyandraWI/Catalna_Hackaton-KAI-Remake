@@ -3,7 +3,10 @@ import SeatMap from "../components/SeatMap";
 import OrderSummary from "../components/OrderSummary";
 import { useLocation } from "react-router-dom";
 import { QRCodeCanvas } from "qrcode.react";
-import { ArrowRight, ArrowLeft, MapPin, Users, CreditCard, CheckCircle, Calendar as CalendarIcon } from "lucide-react";
+import { 
+  ArrowRight, ArrowLeft, MapPin, Users, CreditCard, CheckCircle, 
+  Calendar as CalendarIcon, Car, Bus, Bike 
+} from "lucide-react";
 
 const CITIES = {
   Bandung: ["Cimahi (CMI)", "Bandung (BD)"],
@@ -16,6 +19,46 @@ const CLASS_OPTIONS = [
   { id: "economy", name: "Ekonomi", price: 75000, desc: "AC, toilet, kapasitas 80–106", color: "bg-blue-500" },
   { id: "business", name: "Bisnis", price: 150000, desc: "Fasilitas lebih baik", color: "bg-purple-500" },
   { id: "executive", name: "Eksekutif", price: 300000, desc: "Kursi empuk, kapasitas 50", color: "bg-orange-500" },
+];
+
+// Transportation Add-ons (First & Last Mile)
+const TRANSPORTATION_OPTIONS = [
+  {
+    id: "none",
+    name: "Tidak Perlu",
+    provider: "Tanpa Shuttle",
+    price: 0,
+    desc: "Saya akan mengatur transportasi sendiri",
+    icon: "❌",
+    color: "bg-gray-100 border-gray-300"
+  },
+  {
+    id: "gojek_bike",
+    name: "GoRide",
+    provider: "Gojek",
+    price: 15000,
+    desc: "Ojek online ke lokasi tujuan (estimasi 5-10km)",
+    icon: <Bike size={32} />,
+    color: "bg-emerald-50 border-emerald-300"
+  },
+  {
+    id: "gojek_car",
+    name: "GoCar",
+    provider: "Gojek",
+    price: 35000,
+    desc: "Mobil online ke lokasi tujuan (estimasi 5-10km)",
+    icon: <Car size={32} />,
+    color: "bg-emerald-50 border-emerald-300"
+  },
+  {
+    id: "shuttle_bus",
+    name: "Shuttle Bus KAI",
+    provider: "KAI Connect",
+    price: 25000,
+    desc: "Bus shuttle dari stasiun ke area pusat kota",
+    icon: <Bus size={32} />,
+    color: "bg-blue-50 border-blue-300"
+  }
 ];
 
 function generateSeats(clsId) {
@@ -46,7 +89,6 @@ function CustomDatePicker({ value, onChange, label }) {
   const today = new Date();
   const selectedDate = value ? new Date(value) : null;
 
-  // Generate dates untuk 14 hari ke depan
   const dates = [];
   for (let i = 0; i < 14; i++) {
     const date = new Date(today);
@@ -79,7 +121,6 @@ function CustomDatePicker({ value, onChange, label }) {
     <div className="relative">
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
       
-      {/* Display Button */}
       <button
         type="button"
         onClick={() => setShowCalendar(!showCalendar)}
@@ -91,23 +132,19 @@ function CustomDatePicker({ value, onChange, label }) {
         <CalendarIcon size={20} className="text-gray-500" />
       </button>
 
-      {/* Custom Calendar Dropdown */}
       {showCalendar && (
         <>
-          {/* Backdrop */}
           <div 
             className="fixed inset-0 z-10" 
             onClick={() => setShowCalendar(false)}
           ></div>
 
-          {/* Calendar */}
           <div className="absolute z-20 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 w-full animate-fadeIn">
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Pilih Tanggal Keberangkatan</h3>
               <p className="text-sm text-gray-500">Maksimal 14 hari ke depan</p>
             </div>
 
-            {/* Quick Date Buttons */}
             <div className="grid grid-cols-7 gap-2 mb-4">
               {dates.map((date, idx) => {
                 const isSelected = selectedDate && 
@@ -137,7 +174,6 @@ function CustomDatePicker({ value, onChange, label }) {
               })}
             </div>
 
-            {/* Alternative: Manual Input */}
             <div className="border-t pt-4">
               <label className="block text-xs text-gray-600 mb-2">Atau pilih tanggal manual:</label>
               <input
@@ -170,6 +206,7 @@ export default function Booking() {
   const [passenger, setPassenger] = useState(1);
   const [selectedClass, setSelectedClass] = useState("economy");
   const [selectedSeats, setSelectedSeats] = useState([]);
+  const [selectedTransport, setSelectedTransport] = useState("none"); // NEW
   const [voucher, setVoucher] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("bank");
   const [orderComplete, setOrderComplete] = useState(null);
@@ -189,9 +226,10 @@ export default function Booking() {
   const seats = useMemo(() => generateSeats(selectedClass), [selectedClass]);
 
   const pricePerSeat = CLASS_OPTIONS.find((c) => c.id === selectedClass)?.price || 0;
-  const subtotal = pricePerSeat * passenger;
+  const transportPrice = TRANSPORTATION_OPTIONS.find((t) => t.id === selectedTransport)?.price || 0;
+  const subtotal = (pricePerSeat * passenger) + transportPrice;
   const voucherDiscount =
-    voucher.trim().toUpperCase() === "KAI20" ? Math.min(0.2 * subtotal, 50000) : 0;
+    voucher.trim().toUpperCase() === "KAI20" ? Math.min(0.2 * (pricePerSeat * passenger), 50000) : 0;
   const total = subtotal - voucherDiscount;
 
   function toggleSeat(seatObj) {
@@ -212,8 +250,8 @@ export default function Booking() {
     if (!date) return alert("Pilih tanggal berangkat terlebih dahulu.");
     if (selectedSeats.length !== passenger) return alert(`Pilih ${passenger} kursi.`);
 
-    // Get user profile
     const userProfile = JSON.parse(localStorage.getItem("user_profile") || '{"name":"Guest User","email":"","phone":""}');
+    const selectedTransportInfo = TRANSPORTATION_OPTIONS.find((t) => t.id === selectedTransport);
 
     const ticket = {
       id: `KAI-${Date.now().toString().slice(-6)}`,
@@ -230,6 +268,9 @@ export default function Booking() {
       seats: selectedSeats.map((s) => s.label),
       price: total,
       paymentMethod,
+      // NEW: Transportation info
+      transportAddon: selectedTransportInfo || null,
+      transportPrice: transportPrice,
       eta: "Perkiraan tiba: " + addHours(date, 3),
       timeBooked: new Date().toISOString(),
     };
@@ -240,7 +281,6 @@ export default function Booking() {
     prev.unshift(ticket);
     localStorage.setItem("kai_history", JSON.stringify(prev));
   }
-
 
   const canNextStep1 = 
     originStation && 
@@ -261,14 +301,16 @@ export default function Booking() {
               <p className="text-gray-500 mt-1">Lengkapi data pemesanan Anda</p>
             </div>
 
-            {/* Progress Stepper */}
+            {/* Progress Stepper - Updated with 4 steps */}
             <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
               <div className="flex items-center justify-between">
                 <StepIndicator num={1} label="Info Perjalanan" active={step >= 1} icon={<MapPin size={20} />} />
-                <div className={`flex-1 h-1 mx-4 ${step >= 2 ? "bg-blue-600" : "bg-gray-300"}`}></div>
-                <StepIndicator num={2} label="Pilih Kelas & Kursi" active={step >= 2} icon={<Users size={20} />} />
-                <div className={`flex-1 h-1 mx-4 ${step >= 3 ? "bg-blue-600" : "bg-gray-300"}`}></div>
-                <StepIndicator num={3} label="Pembayaran" active={step >= 3} icon={<CreditCard size={20} />} />
+                <div className={`flex-1 h-1 mx-2 ${step >= 2 ? "bg-blue-600" : "bg-gray-300"}`}></div>
+                <StepIndicator num={2} label="Kelas & Kursi" active={step >= 2} icon={<Users size={20} />} />
+                <div className={`flex-1 h-1 mx-2 ${step >= 3 ? "bg-blue-600" : "bg-gray-300"}`}></div>
+                <StepIndicator num={3} label="Add-on Transport" active={step >= 3} icon={<Car size={20} />} />
+                <div className={`flex-1 h-1 mx-2 ${step >= 4 ? "bg-blue-600" : "bg-gray-300"}`}></div>
+                <StepIndicator num={4} label="Pembayaran" active={step >= 4} icon={<CreditCard size={20} />} />
               </div>
             </div>
 
@@ -368,7 +410,6 @@ export default function Booking() {
                     </select>
                   </div>
 
-                  {/* Custom Date Picker - Full Width */}
                   <div className="col-span-2">
                     <CustomDatePicker
                       value={date}
@@ -377,7 +418,6 @@ export default function Booking() {
                     />
                   </div>
 
-                  {/* Enhanced Passenger Input - Full Width */}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Penumpang</label>
                     <div className="flex items-center gap-4">
@@ -408,7 +448,6 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {/* Warning jika stasiun sama */}
                 {originStation === destStation && originCity === destCity && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
                     <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white font-bold">!</div>
@@ -488,14 +527,79 @@ export default function Booking() {
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
                   >
+                    Lanjut ke Add-on Transport <ArrowRight size={20} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Transportation Add-on (NEW) */}
+            {step === 3 && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="bg-white rounded-xl shadow-lg p-8">
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2 mb-2">
+                      <Car className="text-blue-600" /> Layanan Transportasi Lanjutan
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Tambahkan transportasi dari stasiun {destStation.split(" (")[0]} ke tujuan akhir Anda (Opsional)
+                    </p>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-blue-800">
+                      💡 <strong>First & Last Mile Service</strong> - Pesan transportasi sekarang untuk kemudahan perjalanan Anda!
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {TRANSPORTATION_OPTIONS.map((transport) => (
+                      <div
+                        key={transport.id}
+                        onClick={() => setSelectedTransport(transport.id)}
+                        className={`border-2 rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg ${
+                          selectedTransport === transport.id
+                            ? "border-blue-600 bg-blue-50"
+                            : `border-gray-200 ${transport.color} hover:border-blue-300`
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`w-14 h-14 ${transport.id === "none" ? "bg-gray-200" : "bg-white"} rounded-full flex items-center justify-center text-2xl border-2 border-gray-200`}>
+                            {transport.icon}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-lg">{transport.name}</h3>
+                            <p className="text-xs text-gray-600 mb-2">{transport.provider}</p>
+                            <p className="text-sm text-gray-600 mb-3">{transport.desc}</p>
+                            <p className={`font-bold text-lg ${transport.price === 0 ? "text-gray-600" : "text-green-600"}`}>
+                              {transport.price === 0 ? "Gratis" : `+ Rp ${transport.price.toLocaleString()}`}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setStep(2)}
+                    className="flex-1 py-3 border-2 border-gray-300 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition"
+                  >
+                    <ArrowLeft size={20} /> Kembali
+                  </button>
+                  <button
+                    onClick={() => setStep(4)}
+                    className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition"
+                  >
                     Lanjut ke Pembayaran <ArrowRight size={20} />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Payment */}
-            {step === 3 && (
+            {/* Step 4: Payment (Updated step number) */}
+            {step === 4 && (
               <div className="space-y-6 animate-fadeIn">
                 <OrderSummary
                   origin={originStation}
@@ -505,6 +609,7 @@ export default function Booking() {
                   className={selectedClass}
                   seat={selectedSeats}
                   pricePerSeat={pricePerSeat}
+                  transportAddon={TRANSPORTATION_OPTIONS.find((t) => t.id === selectedTransport)}
                   onVoucherChange={setVoucher}
                   voucher={voucher}
                   subtotal={subtotal}
@@ -516,71 +621,84 @@ export default function Booking() {
                 />
 
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(3)}
                   className="w-full py-3 border-2 border-gray-300 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition"
                 >
-                  <ArrowLeft size={20} /> Kembali ke Pilih Kursi
+                  <ArrowLeft size={20} /> Kembali ke Add-on Transport
                 </button>
               </div>
             )}
           </>
         ) : (
-         <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-2xl mx-auto text-center animate-fadeIn">
-        <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle size={48} className="text-white" />
-        </div>
-        <h2 className="text-3xl font-bold text-gray-800 mb-4">Tiket Berhasil Dipesan! 🎉</h2>
-        
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 mb-6 text-left">
-          {/* Passenger Info */}
-          <div className="bg-white rounded-lg p-4 mb-4">
-            <p className="text-xs text-gray-600 mb-2">Nama Penumpang</p>
-            <p className="text-lg font-bold text-gray-800">{orderComplete.passengerName}</p>
-            {orderComplete.passengerEmail && (
-              <p className="text-sm text-gray-600 mt-1">{orderComplete.passengerEmail}</p>
-            )}
-          </div>
+          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-2xl mx-auto text-center animate-fadeIn">
+            <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle size={48} className="text-white" />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Tiket Berhasil Dipesan! 🎉</h2>
+            
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 mb-6 text-left">
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <p className="text-xs text-gray-600 mb-2">Nama Penumpang</p>
+                <p className="text-lg font-bold text-gray-800">{orderComplete.passengerName}</p>
+                {orderComplete.passengerEmail && (
+                  <p className="text-sm text-gray-600 mt-1">{orderComplete.passengerEmail}</p>
+                )}
+              </div>
 
-          <p className="text-sm text-gray-600 mb-2">Kode Booking</p>
-          <p className="text-3xl font-bold text-blue-600 mb-4">{orderComplete.id}</p>
-          
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-gray-600">Rute</p>
-              <p className="font-semibold">{orderComplete.origin} → {orderComplete.destination}</p>
+              <p className="text-sm text-gray-600 mb-2">Kode Booking</p>
+              <p className="text-3xl font-bold text-blue-600 mb-4">{orderComplete.id}</p>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600">Rute</p>
+                  <p className="font-semibold">{orderComplete.origin} → {orderComplete.destination}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Tanggal</p>
+                  <p className="font-semibold">{orderComplete.date}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Kelas</p>
+                  <p className="font-semibold capitalize">{orderComplete.className}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Kursi</p>
+                  <p className="font-semibold">{orderComplete.seats.join(", ")}</p>
+                </div>
+              </div>
+
+              {/* Transportation Add-on Info */}
+              {orderComplete.transportAddon && orderComplete.transportAddon.id !== "none" && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <p className="text-xs text-gray-600 mb-2">Transportasi Lanjutan</p>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="font-semibold text-gray-800">{orderComplete.transportAddon.name}</p>
+                    <p className="text-sm text-gray-600">{orderComplete.transportAddon.provider}</p>
+                    <p className="text-sm text-green-600 font-semibold mt-1">
+                      + Rp {orderComplete.transportPrice.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-gray-600">Total Pembayaran</p>
+                <p className="text-2xl font-bold text-gray-800">Rp {orderComplete.price.toLocaleString()}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-gray-600">Tanggal</p>
-              <p className="font-semibold">{orderComplete.date}</p>
+            
+            <div className="flex flex-col items-center mb-6">
+              <QRCodeCanvas value={JSON.stringify(orderComplete)} size={200} className="shadow-lg rounded-xl" />
+              <p className="text-sm text-gray-600 mt-3">Scan QR code ini di stasiun</p>
             </div>
-            <div>
-              <p className="text-gray-600">Kelas</p>
-              <p className="font-semibold capitalize">{orderComplete.className}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">Kursi</p>
-              <p className="font-semibold">{orderComplete.seats.join(", ")}</p>
-            </div>
+            
+            <button
+              onClick={() => window.location.href = "/"}
+              className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+              Kembali ke Dashboard
+            </button>
           </div>
-          
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-gray-600">Total Pembayaran</p>
-            <p className="text-2xl font-bold text-gray-800">Rp {orderComplete.price.toLocaleString()}</p>
-          </div>
-        </div>
-        
-        <div className="flex flex-col items-center mb-6">
-          <QRCodeCanvas value={JSON.stringify(orderComplete)} size={200} className="shadow-lg rounded-xl" />
-          <p className="text-sm text-gray-600 mt-3">Scan QR code ini di stasiun</p>
-        </div>
-        
-        <button
-          onClick={() => window.location.href = "/"}
-          className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
-        >
-          Kembali ke Dashboard
-        </button>
-      </div>
         )}
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import { Car } from "lucide-react";
 
 export default function OrderSummary({
   origin,
@@ -8,6 +9,7 @@ export default function OrderSummary({
   className,
   seat,
   pricePerSeat,
+  transportAddon, // NEW
   onVoucherChange,
   voucher,
   subtotal,
@@ -17,7 +19,6 @@ export default function OrderSummary({
   setPaymentMethod,
   onPay,
 }) {
-  // Get user profile
   const userProfile = JSON.parse(
     localStorage.getItem("user_profile") || 
     '{"name":"Guest User","email":"","phone":""}'
@@ -61,6 +62,23 @@ export default function OrderSummary({
             {className} — {Array.isArray(seat) ? seat.map(s => s.label).join(", ") : "-"}
           </div>
         </div>
+
+        {/* Transportation Add-on */}
+        {transportAddon && transportAddon.id !== "none" && (
+          <div className="pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Car size={16} className="text-green-600" />
+              <div className="text-xs text-gray-500">Transportasi Lanjutan</div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="font-semibold text-gray-800">{transportAddon.name}</p>
+              <p className="text-xs text-gray-600">{transportAddon.provider}</p>
+              <p className="text-sm text-green-600 font-semibold mt-1">
+                + Rp {transportAddon.price.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Voucher */}
@@ -83,9 +101,17 @@ export default function OrderSummary({
       {/* Price Summary */}
       <div className="border rounded-lg p-4 bg-gray-50">
         <div className="flex justify-between text-sm text-gray-600 mb-2">
-          <div>Harga per kursi</div>
-          <div>Rp {pricePerSeat.toLocaleString()}</div>
+          <div>Tiket Kereta ({passenger}x)</div>
+          <div>Rp {(pricePerSeat * passenger).toLocaleString()}</div>
         </div>
+
+        {transportAddon && transportAddon.price > 0 && (
+          <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <div>Transportasi Lanjutan</div>
+            <div>Rp {transportAddon.price.toLocaleString()}</div>
+          </div>
+        )}
+
         <div className="flex justify-between font-medium mb-2">
           <div>Subtotal</div>
           <div>Rp {subtotal.toLocaleString()}</div>

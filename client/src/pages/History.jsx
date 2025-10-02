@@ -1,5 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { Ticket, Calendar, Train, MapPin, Users, QrCode, RefreshCw, Trash2 } from "lucide-react";
+import { 
+  Ticket, Calendar, Train, MapPin, Users, QrCode, RefreshCw, Trash2, 
+  Car, Bike, Bus 
+} from "lucide-react";
 import { useState } from "react";
 
 export default function History() {
@@ -41,6 +44,22 @@ export default function History() {
     if (bookingDate < today) return "Selesai";
     if (bookingDate.getTime() === today.getTime()) return "Hari Ini";
     return "Akan Datang";
+  };
+
+  // Helper function untuk render icon transportasi yang sesuai
+  const getTransportIcon = (transportId) => {
+    if (!transportId) return <Car size={20} />;
+    
+    switch(transportId) {
+      case "gojek_bike":
+        return <Bike size={20} />;
+      case "gojek_car":
+        return <Car size={20} />;
+      case "shuttle_bus":
+        return <Bus size={20} />;
+      default:
+        return <Car size={20} />;
+    }
   };
 
   return (
@@ -152,6 +171,32 @@ export default function History() {
                     </div>
                   </div>
 
+                  {/* Transportation Add-on (UPDATED dengan dynamic icon) */}
+                  {item.transportAddon && item.transportAddon.id !== "none" && (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 mb-4 border border-green-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                          {/* Dynamic Icon berdasarkan transport ID */}
+                          {getTransportIcon(item.transportAddon.id)}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-600">Transportasi Lanjutan</p>
+                          <p className="text-base font-bold text-gray-800">
+                            {item.transportAddon.name}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {item.transportAddon.provider}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-green-600">
+                            + Rp {item.transportPrice.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Details Grid */}
                   <div className="grid grid-cols-4 gap-4 mb-4">
                     <div className="flex items-center gap-2">
@@ -208,6 +253,11 @@ export default function History() {
                       <p className="text-2xl font-bold text-gray-800">
                         Rp {item.price.toLocaleString()}
                       </p>
+                      {item.transportPrice > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          (Termasuk transport: Rp {item.transportPrice.toLocaleString()})
+                        </p>
+                      )}
                     </div>
                     <div className="text-right text-xs text-gray-500">
                       <p>Dipesan pada:</p>

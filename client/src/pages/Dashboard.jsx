@@ -1,5 +1,8 @@
 import { Link } from "react-router-dom";
-import { Ticket, Train, Search, History, Calendar, Clock, CreditCard, ArrowRight, User } from "lucide-react";
+import { 
+  Ticket, Train, Search, History, Calendar, Clock, CreditCard, 
+  ArrowRight, User, Car, Bike, Bus 
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -32,6 +35,22 @@ export default function Dashboard() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  // Helper function untuk render icon transportasi yang sesuai
+  const getTransportIcon = (transportId) => {
+    if (!transportId) return <Car size={24} />;
+    
+    switch(transportId) {
+      case "gojek_bike":
+        return <Bike size={24} />;
+      case "gojek_car":
+        return <Car size={24} />;
+      case "shuttle_bus":
+        return <Bus size={24} />;
+      default:
+        return <Car size={24} />;
+    }
   };
 
   return (
@@ -176,6 +195,32 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
+
+                {/* Transportation Add-on (UPDATED dengan dynamic icon) */}
+                {latestOrder.transportAddon && latestOrder.transportAddon.id !== "none" && (
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+                        {/* Dynamic Icon berdasarkan transport ID */}
+                        {getTransportIcon(latestOrder.transportAddon.id)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-600 mb-1">Transportasi Lanjutan</p>
+                        <p className="text-lg font-bold text-gray-800">
+                          {latestOrder.transportAddon.name}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {latestOrder.transportAddon.provider}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-green-600">
+                          + Rp {latestOrder.transportPrice.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Compact Info Grid */}
                 <div className="grid grid-cols-3 gap-3">

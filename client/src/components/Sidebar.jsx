@@ -5,7 +5,7 @@ import logoKAI from "../assets/logo_kai.svg";
 export default function Sidebar() {
   const location = useLocation();
   const menu = [
-    { name: "Dashboard", path: "/", icon: <Home size={20} /> },
+    { name: "Dashboard", path: "/dashboard", icon: <Home size={20} /> },
     { name: "Pesan Tiket", path: "/booking", icon: <Ticket size={20} /> },
     { name: "Tracking", path: "/tracking", icon: <Train size={20} /> },
     { name: "Riwayat Pemesanan", path: "/history", icon: <History size={20} /> },
@@ -46,4 +46,3 @@ export default function Sidebar() {
     </div>
   );
 }
-  

@@ -54,7 +54,7 @@ export default function Profile() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <User size={16} className="text-blue-600" />
                   Nama Lengkap
                 </label>
@@ -69,7 +69,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Mail size={16} className="text-blue-600" />
                   Email
                 </label>
@@ -84,7 +84,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Phone size={16} className="text-blue-600" />
                   Nomor Telepon
                 </label>
@@ -99,7 +99,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <CreditCard size={16} className="text-blue-600" />
                   NIK
                 </label>
