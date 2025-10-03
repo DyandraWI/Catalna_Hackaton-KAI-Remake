@@ -1,8 +1,9 @@
+// Sidebar.jsx
 import { Link, useLocation } from "react-router-dom";
-import { Home, Ticket, Train, History } from "lucide-react";
+import { Home, Ticket, Train, History, X } from "lucide-react";
 import logoKAI from "../assets/logo_kai.svg";
 
-export default function Sidebar() {
+export default function Sidebar({ open, setOpen }) {
   const location = useLocation();
   const menu = [
     { name: "Dashboard", path: "/dashboard", icon: <Home size={20} /> },
@@ -12,37 +13,58 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col p-6 shadow-sm">
-      {/* Logo KAI */}
-      <div className="mb-10 flex justify-center">
-        <img src={logoKAI} alt="KAI Logo" className="w-28 h-auto" />
-      </div>
+    <>
+      {/* Overlay for mobile */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setOpen(false)}
+        ></div>
+      )}
 
-      {/* Menu */}
-      <nav className="space-y-2">
-        {menu.map((item, idx) => {
-          const active = location.pathname === item.path;
-          return (
-            <Link
-              key={idx}
-              to={item.path}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
-                active
-                  ? "bg-orange-500 text-white font-semibold shadow-md"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              {item.icon}
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <div
+        className={`fixed z-50 inset-y-0 left-0 w-64 bg-white border-r border-gray-200 flex flex-col p-6 shadow-lg transform transition-transform duration-300 
+        ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static md:shadow-sm`}
+      >
+        {/* Header logo */}
+        <div className="mb-10 flex justify-between items-center">
+          <img src={logoKAI} alt="KAI Logo" className="w-28 h-auto" />
+          {/* Close button in mobile */}
+          <button
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            onClick={() => setOpen(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-      {/* Footer */}
-      <div className="mt-auto pt-10 text-center">
-        <p className="text-xs text-gray-400">© 2025 KAI</p>
+        {/* Menu */}
+        <nav className="space-y-2">
+          {menu.map((item, idx) => {
+            const active = location.pathname === item.path;
+            return (
+              <Link
+                key={idx}
+                to={item.path}
+                onClick={() => setOpen(false)}
+                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                  active
+                    ? "bg-orange-500 text-white font-semibold shadow-md"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {item.icon}
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div className="mt-auto pt-10 text-center">
+          <p className="text-xs text-gray-400">© 2025 KAI</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -693,7 +693,7 @@ export default function Booking() {
             </div>
             
             <button
-              onClick={() => window.location.href = "/"}
+              onClick={() => window.location.href = "/dashboard"}
               className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
             >
               Kembali ke Dashboard

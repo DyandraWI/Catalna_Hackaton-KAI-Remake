@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import L from 'leaflet';
-import { Train, MapPin, Navigation, RotateCcw, Clock, Route, Activity, Search, X } from "lucide-react";
+import { Train, MapPin, Navigation, X, Search, Menu } from "lucide-react";
 
 export default function LiveMap({
   latestOrder,
@@ -17,6 +17,7 @@ export default function LiveMap({
   const [realTimeUpdate, setRealTimeUpdate] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const trainMarkerRef = useRef(null);
@@ -24,7 +25,7 @@ export default function LiveMap({
   const stationMarkersRef = useRef([]);
   const otherTrainMarkersRef = useRef([]);
 
-  // Mock train data for sidebar (similar to screenshot)
+  // Mock train data
   const mockTrains = [
     {
       id: 1,
@@ -64,7 +65,7 @@ export default function LiveMap({
     }
   ];
 
-  // Generate coordinates for user train
+  // Generate coordinates
   const generateStationCoords = (stations) => {
     const coordinatesMap = {
       "Jakarta Gambir": [-6.1754, 106.8272],
@@ -86,7 +87,6 @@ export default function LiveMap({
     });
   };
 
-  // User train data
   const userTrain = latestOrder ? {
     id: 999,
     trainNumber: latestOrder.trainNumber || "MY001",
@@ -102,7 +102,6 @@ export default function LiveMap({
 
   const stationCoords = latestOrder ? generateStationCoords(stations) : [];
 
-  // Filter trains
   const filteredTrains = mockTrains.filter(train =>
     train.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     train.trainNumber.includes(searchTerm) ||
@@ -123,17 +122,15 @@ export default function LiveMap({
     mapInstanceRef.current = map;
   }, []);
 
-  // Update all train markers
+  // Update train markers
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    // Clear existing other train markers
     otherTrainMarkersRef.current.forEach(marker => {
       mapInstanceRef.current.removeLayer(marker);
     });
     otherTrainMarkersRef.current = [];
 
-    // Add other train markers
     filteredTrains.forEach(train => {
       const trainIcon = L.divIcon({
         html: `<div style="
@@ -171,7 +168,6 @@ export default function LiveMap({
       otherTrainMarkersRef.current.push(marker);
     });
 
-    // Update user train marker if exists
     if (userTrain) {
       if (trainMarkerRef.current) {
         mapInstanceRef.current.removeLayer(trainMarkerRef.current);
@@ -218,22 +214,38 @@ export default function LiveMap({
     const interval = setInterval(() => {
       setRealTimeUpdate(new Date());
     }, 5000);
-
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="bg-white h-screen flex">
-      {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-0' : 'w-80'} transition-all duration-300 bg-white border-r border-gray-200 flex flex-col overflow-hidden`}>
-        {!sidebarCollapsed && (
+    <div className="bg-white h-[calc(100vh-200px)] lg:h-screen flex flex-col lg:flex-row relative">
+      {/* Mobile Sidebar Overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - Responsive */}
+      <div className={`
+        ${sidebarCollapsed && !mobileSidebarOpen ? 'w-0' : 'w-full lg:w-80'}
+        ${mobileSidebarOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden lg:block'}
+        transition-all duration-300 bg-white border-r border-gray-200 flex flex-col overflow-hidden
+      `}>
+        {(!sidebarCollapsed || mobileSidebarOpen) && (
           <>
             {/* Sidebar Header */}
-            <div className="p-4 border-b bg-gray-50">
+            <div className="p-3 lg:p-4 border-b bg-gray-50">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800">👋 Klik kereta untuk auto-follow dan lihat rute</h3>
+                <h3 className="text-sm lg:text-base font-semibold text-gray-800">
+                  👋 Klik kereta untuk auto-follow
+                </h3>
                 <button
-                  onClick={() => setSidebarCollapsed(true)}
+                  onClick={() => {
+                    setSidebarCollapsed(true);
+                    setMobileSidebarOpen(false);
+                  }}
                   className="p-1 hover:bg-gray-200 rounded"
                 >
                   <X size={16} />
@@ -241,30 +253,32 @@ export default function LiveMap({
               </div>
               
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
                 <input
                   type="text"
                   placeholder="Cari kereta atau rute..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-xs lg:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
 
             {/* User Train (Priority) */}
             {userTrain && (
-              <div className="p-4 bg-green-50 border-b">
+              <div className="p-3 lg:p-4 bg-green-50 border-b">
                 <div className="bg-white rounded-lg border-2 border-green-200 p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="font-semibold text-green-800">🎫 {userTrain.name}</div>
-                    <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                    <div className="text-sm lg:text-base font-semibold text-green-800 truncate">
+                      🎫 {userTrain.name}
+                    </div>
+                    <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium flex-shrink-0">
                       MY TRAIN
                     </div>
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">{userTrain.route}</div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-4">
+                  <div className="text-xs lg:text-sm text-gray-600 mb-2 truncate">{userTrain.route}</div>
+                  <div className="flex items-center justify-between text-xs lg:text-sm">
+                    <div className="flex items-center gap-2 lg:gap-4">
                       <span className="text-green-600 font-semibold">{userTrain.status}</span>
                       <span className="text-gray-600">⚡ {userTrain.speed} km/h</span>
                     </div>
@@ -275,28 +289,35 @@ export default function LiveMap({
 
             {/* Train List */}
             <div className="flex-1 overflow-y-auto">
-              <div className="p-4">
-                <h4 className="font-semibold text-gray-800 mb-3">Kereta Lainnya</h4>
-                <div className="space-y-3">
+              <div className="p-3 lg:p-4">
+                <h4 className="text-sm lg:text-base font-semibold text-gray-800 mb-3">Kereta Lainnya</h4>
+                <div className="space-y-2 lg:space-y-3">
                   {filteredTrains.map((train) => (
                     <div
                       key={train.id}
                       className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md transition cursor-pointer"
-                      onClick={() => onTrainFollow && onTrainFollow(train)}
+                      onClick={() => {
+                        onTrainFollow && onTrainFollow(train);
+                        setMobileSidebarOpen(false);
+                      }}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <div className="font-semibold text-gray-800">{train.name}</div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-medium">
+                        <div className="text-sm lg:text-base font-semibold text-gray-800 truncate">
+                          {train.name}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
                             {train.status}
                           </span>
-                          <span className="text-xs text-gray-500">⚡ {train.speed} km/h</span>
                         </div>
                       </div>
-                      <div className="text-sm text-gray-600">{train.route}</div>
-                      {train.delay > 0 && (
-                        <div className="text-xs text-orange-600 mt-1">+{train.delay} min</div>
-                      )}
+                      <div className="text-xs lg:text-sm text-gray-600 mb-1 truncate">{train.route}</div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">⚡ {train.speed} km/h</span>
+                        {train.delay > 0 && (
+                          <span className="text-orange-600">+{train.delay} min</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -304,10 +325,10 @@ export default function LiveMap({
             </div>
 
             {/* Route Legend */}
-            <div className="p-4 border-t bg-gray-50">
-              <div className="flex items-center gap-2 text-sm">
+            <div className="p-3 lg:p-4 border-t bg-gray-50">
+              <div className="flex items-center gap-2 text-xs lg:text-sm">
                 <div className="w-4 h-1 bg-orange-500 rounded"></div>
-                <span className="text-gray-600">Garis oranye: Rute kereta yang dipilih</span>
+                <span className="text-gray-600">Garis oranye: Rute kereta</span>
               </div>
             </div>
           </>
@@ -316,20 +337,37 @@ export default function LiveMap({
 
       {/* Map Container */}
       <div className="flex-1 relative">
-        {/* Map Header */}
-        <div className="absolute top-0 left-0 right-0 bg-white border-b border-gray-200 p-4 z-10">
+        {/* Map Header - Responsive */}
+        <div className="absolute top-0 left-0 right-0 bg-white border-b border-gray-200 p-3 lg:p-4 z-10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 lg:gap-3 flex-1 min-w-0">
+              {(sidebarCollapsed || !mobileSidebarOpen) && (
+                <button
+                  onClick={() => {
+                    setSidebarCollapsed(false);
+                    setMobileSidebarOpen(true);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg flex-shrink-0 lg:hidden"
+                >
+                  <Menu size={20} />
+                </button>
+              )}
               {sidebarCollapsed && (
                 <button
                   onClick={() => setSidebarCollapsed(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="hidden lg:block p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
                 >
                   <Train size={20} />
                 </button>
               )}
-              <h1 className="text-xl font-bold text-gray-800">KAI Live Tracker</h1>
-              <p className="text-sm text-gray-600">Pantau pergerakan real-time kereta api Indonesia</p>
+              <div className="min-w-0">
+                <h1 className="text-base lg:text-xl font-bold text-gray-800 truncate">
+                  KAI Live Tracker
+                </h1>
+                <p className="hidden lg:block text-xs lg:text-sm text-gray-600">
+                  Pantau pergerakan real-time kereta api Indonesia
+                </p>
+              </div>
             </div>
             
             <div className="flex items-center gap-2">
@@ -337,11 +375,11 @@ export default function LiveMap({
                 onClick={() => setShowRoute(!showRoute)}
                 className={`p-2 rounded-lg transition ${showRoute ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
               >
-                <Navigation size={16} />
+                <Navigation size={14} className="lg:w-4 lg:h-4" />
               </button>
-              <div className="flex items-center gap-2 text-sm">
+              <div className="hidden lg:flex items-center gap-2 text-sm">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-600 font-medium">Live Updates</span>
+                <span className="text-green-600 font-medium">Live</span>
               </div>
             </div>
           </div>
@@ -350,18 +388,20 @@ export default function LiveMap({
         {/* Map */}
         <div 
           ref={mapRef} 
-          style={{ height: '100%', width: '100%', paddingTop: '80px' }}
+          style={{ height: '100%', width: '100%', paddingTop: '60px' }}
           className="leaflet-container"
         />
 
         {/* Following Indicator */}
         {isFollowing && followingTrain && (
-          <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-10">
-            <Train size={16} className="animate-pulse" />
-            <span className="text-sm font-semibold">Following: {followingTrain.name}</span>
+          <div className="absolute bottom-4 left-4 right-4 lg:right-auto bg-blue-600 text-white px-3 lg:px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-10">
+            <Train size={14} className="lg:w-4 lg:h-4 animate-pulse flex-shrink-0" />
+            <span className="text-xs lg:text-sm font-semibold truncate">
+              Following: {followingTrain.name}
+            </span>
             <button
               onClick={onStopFollowing}
-              className="ml-2 hover:bg-blue-700 rounded p-1"
+              className="ml-auto hover:bg-blue-700 rounded p-1 flex-shrink-0"
             >
               ✕
             </button>
