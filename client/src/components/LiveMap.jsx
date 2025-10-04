@@ -1,23 +1,22 @@
 import { useState, useEffect, useRef } from "react";
 import L from 'leaflet';
-import { Train, MapPin, Navigation, RotateCcw, Clock, Route, Activity, Search, X, Target, RotateCw } from "lucide-react";
+import { Train, MapPin, Navigation, RotateCcw, Search, X, Target, RotateCw, Bug, Info } from "lucide-react";
 
 export default function LiveMap({
-  latestOrder,
-  stations,
-  currentStation,
-  selectedTrain,
-  followingTrain: followingTrainProp,
-  onTrainSelect,
-  onTrainFollow,
-  onStopFollowing
+  userBookings = [],
+  bookingVersion = 0,
+  onRefreshBookings,
+  onClearAllBookings,
+  onRemoveBooking
 }) {
   const [showRoute, setShowRoute] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingTrainId, setFollowingTrainId] = useState(null);
-  const [realTimeUpdate, setRealTimeUpdate] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+  
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const trainMarkersRef = useRef({});
@@ -25,7 +24,7 @@ export default function LiveMap({
   const stationMarkersRef = useRef({});
   const followingIntervalRef = useRef(null);
 
-  // Station coordinates database (expanded)
+  // Station coordinates
   const stationCoordinates = {
     "Jakarta Gambir": [-6.1754, 106.8272],
     "Jakarta Pasar Senen": [-6.1744, 106.8406],
@@ -53,41 +52,35 @@ export default function LiveMap({
     "Blitar": [-8.0983, 112.1681]
   };
 
-  // Define train routes matching schedule table
+  // Train routes
   const trainRoutes = {
-    10501: { // Argo Bromo Anggrek
+    10501: {
       stations: ["Jakarta Gambir", "Cikampek", "Cirebon", "Semarang", "Solo", "Mojokerto", "Surabaya Pasar Turi"],
-      color: "#f59e0b",
-      direction: 1
+      color: "#f59e0b"
     },
-    10502: { // Jayabaya
+    10502: {
       stations: ["Jakarta Pasar Senen", "Bekasi", "Cikampek", "Yogyakarta", "Solo", "Madiun", "Kertosono", "Malang"],
-      color: "#ef4444", 
-      direction: 1
+      color: "#ef4444"
     },
-    10503: { // Taksaka
+    10503: {
       stations: ["Jakarta Gambir", "Cikampek", "Cirebon", "Semarang", "Yogyakarta"],
-      color: "#8b5cf6",
-      direction: 1
+      color: "#8b5cf6"
     },
-    10504: { // Gajayana
+    10504: {
       stations: ["Jakarta Gambir", "Cikampek", "Cirebon", "Semarang", "Solo", "Madiun", "Kertosono", "Malang"],
-      color: "#06b6d4",
-      direction: 1
+      color: "#06b6d4"
     },
-    10505: { // Lodaya
+    10505: {
       stations: ["Jakarta Gambir", "Cikampek", "Purwakarta", "Padalarang", "Cimahi", "Bandung"],
-      color: "#10b981",
-      direction: 1
+      color: "#10b981"
     },
-    10506: { // Matarmaja
+    10506: {
       stations: ["Jakarta Pasar Senen", "Bekasi", "Cikampek", "Cirebon", "Semarang Tawang"],
-      color: "#f97316",
-      direction: 1
+      color: "#f97316"
     }
   };
 
-  // Train position tracking with route progress
+  // Train data
   const [trainData, setTrainData] = useState({
     10501: { routeProgress: 0.3, speed: 88 },
     10502: { routeProgress: 0.6, speed: 80 },
@@ -97,11 +90,11 @@ export default function LiveMap({
     10506: { routeProgress: 0.4, speed: 82 }
   });
 
-  // Calculate position along route
+  // Calculate train position
   const calculateTrainPosition = (trainNumber, routeProgress) => {
     const route = trainRoutes[trainNumber];
     if (!route || !route.stations || route.stations.length < 2) {
-      return stationCoordinates["Jakarta Gambir"] || [-6.2, 106.8];
+      return [-6.2, 106.8];
     }
 
     const stations = route.stations;
@@ -116,7 +109,7 @@ export default function LiveMap({
     const toStation = stationCoordinates[stations[toStationIdx]];
 
     if (!fromStation || !toStation) {
-      return stationCoordinates["Jakarta Gambir"] || [-6.2, 106.8];
+      return [-6.2, 106.8];
     }
 
     const lat = fromStation[0] + (toStation[0] - fromStation[0]) * segmentProgress;
@@ -125,8 +118,8 @@ export default function LiveMap({
     return [lat, lng];
   };
 
-  // All trains from schedule table
-  const allScheduleTrains = [
+  // Base schedule trains
+  const baseScheduleTrains = [
     {
       id: 10501,
       trainNumber: "10501",
@@ -135,54 +128,52 @@ export default function LiveMap({
       route: "Jakarta Gambir → Surabaya Pasar Turi",
       departure: "19:10",
       arrival: "05:30",
-      platform: "Platform 1",
       status: "TEPAT WAKTU",
-      speed: trainData[10501].speed,
-      lat: calculateTrainPosition(10501, trainData[10501].routeProgress)[0],
-      lng: calculateTrainPosition(10501, trainData[10501].routeProgress)[1],
-      delay: 0,
+      speed: trainData[10501]?.speed || 88,
+      lat: calculateTrainPosition(10501, trainData[10501]?.routeProgress || 0.3)[0],
+      lng: calculateTrainPosition(10501, trainData[10501]?.routeProgress || 0.3)[1],
       color: trainRoutes[10501].color,
-      routeProgress: trainData[10501].routeProgress,
-      currentStation: trainRoutes[10501].stations[Math.floor(trainData[10501].routeProgress * (trainRoutes[10501].stations.length - 1))],
-      nextStation: trainRoutes[10501].stations[Math.min(Math.floor(trainData[10501].routeProgress * (trainRoutes[10501].stations.length - 1)) + 1, trainRoutes[10501].stations.length - 1)]
+      routeProgress: trainData[10501]?.routeProgress || 0.3,
+      currentStation: "Cirebon",
+      nextStation: "Semarang",
+      canTrack: true
     },
     {
       id: 10502,
       trainNumber: "10502",
       name: "Jayabaya",
-      class: "Bisnis", 
+      class: "Bisnis",
       route: "Jakarta Pasar Senen → Malang",
       departure: "20:00",
       arrival: "07:15",
-      platform: "Platform 2",
       status: "TERLAMBAT",
-      speed: trainData[10502].speed,
-      lat: calculateTrainPosition(10502, trainData[10502].routeProgress)[0],
-      lng: calculateTrainPosition(10502, trainData[10502].routeProgress)[1],
-      delay: 15,
+      speed: trainData[10502]?.speed || 80,
+      lat: calculateTrainPosition(10502, trainData[10502]?.routeProgress || 0.6)[0],
+      lng: calculateTrainPosition(10502, trainData[10502]?.routeProgress || 0.6)[1],
       color: trainRoutes[10502].color,
-      routeProgress: trainData[10502].routeProgress,
-      currentStation: trainRoutes[10502].stations[Math.floor(trainData[10502].routeProgress * (trainRoutes[10502].stations.length - 1))],
-      nextStation: trainRoutes[10502].stations[Math.min(Math.floor(trainData[10502].routeProgress * (trainRoutes[10502].stations.length - 1)) + 1, trainRoutes[10502].stations.length - 1)]
+      routeProgress: trainData[10502]?.routeProgress || 0.6,
+      currentStation: "Solo",
+      nextStation: "Malang",
+      delay: 15,
+      canTrack: true
     },
     {
       id: 10503,
       trainNumber: "10503",
       name: "Taksaka",
       class: "Eksekutif",
-      route: "Jakarta Gambir → Yogyakarta", 
+      route: "Jakarta Gambir → Yogyakarta",
       departure: "07:00",
       arrival: "15:30",
-      platform: "Platform 3",
       status: "TEPAT WAKTU",
-      speed: trainData[10503].speed,
-      lat: calculateTrainPosition(10503, trainData[10503].routeProgress)[0],
-      lng: calculateTrainPosition(10503, trainData[10503].routeProgress)[1],
-      delay: 0,
+      speed: trainData[10503]?.speed || 67,
+      lat: calculateTrainPosition(10503, trainData[10503]?.routeProgress || 0.45)[0],
+      lng: calculateTrainPosition(10503, trainData[10503]?.routeProgress || 0.45)[1],
       color: trainRoutes[10503].color,
-      routeProgress: trainData[10503].routeProgress,
-      currentStation: trainRoutes[10503].stations[Math.floor(trainData[10503].routeProgress * (trainRoutes[10503].stations.length - 1))],
-      nextStation: trainRoutes[10503].stations[Math.min(Math.floor(trainData[10503].routeProgress * (trainRoutes[10503].stations.length - 1)) + 1, trainRoutes[10503].stations.length - 1)]
+      routeProgress: trainData[10503]?.routeProgress || 0.45,
+      currentStation: "Semarang",
+      nextStation: "Yogyakarta",
+      canTrack: true
     },
     {
       id: 10504,
@@ -190,18 +181,17 @@ export default function LiveMap({
       name: "Gajayana",
       class: "Eksekutif",
       route: "Jakarta Gambir → Malang",
-      departure: "18:00", 
+      departure: "18:00",
       arrival: "04:45",
-      platform: "Platform 1",
       status: "TEPAT WAKTU",
-      speed: trainData[10504].speed,
-      lat: calculateTrainPosition(10504, trainData[10504].routeProgress)[0],
-      lng: calculateTrainPosition(10504, trainData[10504].routeProgress)[1],
-      delay: 0,
+      speed: trainData[10504]?.speed || 85,
+      lat: calculateTrainPosition(10504, trainData[10504]?.routeProgress || 0.25)[0],
+      lng: calculateTrainPosition(10504, trainData[10504]?.routeProgress || 0.25)[1],
       color: trainRoutes[10504].color,
-      routeProgress: trainData[10504].routeProgress,
-      currentStation: trainRoutes[10504].stations[Math.floor(trainData[10504].routeProgress * (trainRoutes[10504].stations.length - 1))],
-      nextStation: trainRoutes[10504].stations[Math.min(Math.floor(trainData[10504].routeProgress * (trainRoutes[10504].stations.length - 1)) + 1, trainRoutes[10504].stations.length - 1)]
+      routeProgress: trainData[10504]?.routeProgress || 0.25,
+      currentStation: "Cikampek",
+      nextStation: "Cirebon",
+      canTrack: true
     },
     {
       id: 10505,
@@ -211,96 +201,126 @@ export default function LiveMap({
       route: "Jakarta Gambir → Bandung",
       departure: "15:30",
       arrival: "18:45",
-      platform: "Platform 4", 
       status: "TEPAT WAKTU",
-      speed: trainData[10505].speed,
-      lat: calculateTrainPosition(10505, trainData[10505].routeProgress)[0],
-      lng: calculateTrainPosition(10505, trainData[10505].routeProgress)[1],
-      delay: 0,
+      speed: trainData[10505]?.speed || 75,
+      lat: calculateTrainPosition(10505, trainData[10505]?.routeProgress || 0.7)[0],
+      lng: calculateTrainPosition(10505, trainData[10505]?.routeProgress || 0.7)[1],
       color: trainRoutes[10505].color,
-      routeProgress: trainData[10505].routeProgress,
-      currentStation: trainRoutes[10505].stations[Math.floor(trainData[10505].routeProgress * (trainRoutes[10505].stations.length - 1))],
-      nextStation: trainRoutes[10505].stations[Math.min(Math.floor(trainData[10505].routeProgress * (trainRoutes[10505].stations.length - 1)) + 1, trainRoutes[10505].stations.length - 1)]
+      routeProgress: trainData[10505]?.routeProgress || 0.7,
+      currentStation: "Cikampek",
+      nextStation: "Bandung",
+      canTrack: true
     },
     {
       id: 10506,
-      trainNumber: "10506", 
+      trainNumber: "10506",
       name: "Matarmaja",
       class: "Ekonomi Plus",
-      route: "Jakarta Pasar Senen → Semarang Tawang",
+      route: "Jakarta Pasar Senen → Semarang",
       departure: "14:00",
       arrival: "21:30",
-      platform: "Platform 2",
       status: "TEPAT WAKTU",
-      speed: trainData[10506].speed,
-      lat: calculateTrainPosition(10506, trainData[10506].routeProgress)[0],
-      lng: calculateTrainPosition(10506, trainData[10506].routeProgress)[1],
-      delay: 0,
+      speed: trainData[10506]?.speed || 82,
+      lat: calculateTrainPosition(10506, trainData[10506]?.routeProgress || 0.4)[0],
+      lng: calculateTrainPosition(10506, trainData[10506]?.routeProgress || 0.4)[1],
       color: trainRoutes[10506].color,
-      routeProgress: trainData[10506].routeProgress,
-      currentStation: trainRoutes[10506].stations[Math.floor(trainData[10506].routeProgress * (trainRoutes[10506].stations.length - 1))],
-      nextStation: trainRoutes[10506].stations[Math.min(Math.floor(trainData[10506].routeProgress * (trainRoutes[10506].stations.length - 1)) + 1, trainRoutes[10506].stations.length - 1)]
+      routeProgress: trainData[10506]?.routeProgress || 0.4,
+      currentStation: "Cikampek",
+      nextStation: "Cirebon",
+      canTrack: true
     }
   ];
 
-  // Generate coordinates for user train
-  const generateStationCoords = (stations) => {
-    return stations.map((station, idx) => {
-      return stationCoordinates[station.name] || [-6.2 + (idx * 0.4), 106.8 + (idx * 0.6)];
+  // Get user bookings for today
+  const getTodayUserBookings = () => {
+    if (!Array.isArray(userBookings)) return [];
+    
+    const today = new Date().toDateString();
+    return userBookings.filter(booking => {
+      if (!booking) return false;
+      const travelDate = booking.travelDate || booking.date || booking.departureDate;
+      if (!travelDate) return true;
+      return new Date(travelDate).toDateString() === today;
     });
   };
 
-  // User train data
-  const userTrain = latestOrder ? {
-    id: 999,
-    trainNumber: latestOrder.trainNumber || "MY001",
-    name: latestOrder.trainName || "Kereta Anda",
-    route: `${latestOrder.origin} → ${latestOrder.destination}`,
-    status: "TEPAT WAKTU",
-    speed: Math.floor(60 + Math.random() * 40),
-    lat: generateStationCoords(stations)[currentStation]?.[0] || -6.2,
-    lng: generateStationCoords(stations)[currentStation]?.[1] || 106.8,
-    isUserTrain: true,
-    color: "#10b981",
-    currentStation: stations[currentStation]?.name || "Jakarta",
-    nextStation: stations[currentStation + 1]?.name || "Tujuan"
-  } : null;
+  // Enhanced schedule trains with bookings
+  const enhanceScheduleTrainsWithBookings = () => {
+    const todayBookings = getTodayUserBookings();
+    console.log("Today's user bookings:", todayBookings);
+    
+    return baseScheduleTrains.map(train => {
+      const userBooking = todayBookings.find(booking => 
+        booking.trainNumber === train.trainNumber ||
+        booking.trainNumber === train.id.toString() ||
+        booking.trainName === train.name ||
+        booking.trainName?.toLowerCase().includes(train.name.toLowerCase()) ||
+        train.name.toLowerCase().includes(booking.trainName?.toLowerCase())
+      );
+      
+      if (userBooking) {
+        console.log(`✅ Found booking for train ${train.name}`);
+        return {
+          ...train,
+          isUserBooked: true,
+          userBooking: userBooking,
+          ticketDetails: {
+            seats: userBooking.seats || userBooking.seatNumbers || [],
+            class: userBooking.class || userBooking.trainClass || train.class,
+            passengers: userBooking.passengers || userBooking.passengerCount || 1,
+            bookingId: userBooking.id || userBooking.bookingId
+          }
+        };
+      }
+      return train;
+    });
+  };
 
-  const stationCoords = latestOrder ? generateStationCoords(stations) : [];
-
+  // Get enhanced trains
+  const scheduleTrains = enhanceScheduleTrainsWithBookings();
+  
   // Filter trains
-  const filteredTrains = allScheduleTrains.filter(train =>
+  const filteredScheduleTrains = scheduleTrains.filter(train =>
     train.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     train.trainNumber.includes(searchTerm) ||
     train.route.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Combine all trains
-  const allTrains = userTrain ? [userTrain, ...filteredTrains] : filteredTrains;
-  const currentFollowingTrain = followingTrainId ? allTrains.find(t => t.id === followingTrainId) : null;
+  const userBookedCount = scheduleTrains.filter(t => t.isUserBooked).length;
+  const currentFollowingTrain = followingTrainId ? scheduleTrains.find(t => t.id === followingTrainId) : null;
 
   // Initialize map
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const map = L.map(mapRef.current).setView([-7.0, 109.5], 7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 18,
-      minZoom: 6
-    }).addTo(map);
+    console.log("Initializing map...");
+    
+    try {
+      const map = L.map(mapRef.current).setView([-7.0, 109.5], 7);
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+        minZoom: 6
+      }).addTo(map);
 
-    mapInstanceRef.current = map;
+      mapInstanceRef.current = map;
+      console.log("Map initialized successfully");
+      
+    } catch (error) {
+      console.error("Error initializing map:", error);
+    }
 
     return () => {
       if (mapInstanceRef.current) {
+        console.log("Cleaning up map");
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
     };
   }, []);
 
-  // Realistic train movement simulation
+  // Train movement simulation
   useEffect(() => {
     const interval = setInterval(() => {
       setTrainData(prev => {
@@ -321,281 +341,196 @@ export default function LiveMap({
         
         return newData;
       });
-    }, 2000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Draw route lines ONLY for followed train
+  // ADDED: Draw route lines for followed train
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    // Clear ALL existing route lines
+    console.log("Drawing routes for following train:", followingTrainId);
+
+    // Clear existing route lines
     Object.values(routeLinesRef.current).forEach(line => {
-      mapInstanceRef.current.removeLayer(line);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(line);
+      }
     });
     routeLinesRef.current = {};
 
-    // Clear ALL existing station markers
+    // Clear existing station markers
     Object.values(stationMarkersRef.current).forEach(markers => {
-      markers.forEach(marker => mapInstanceRef.current.removeLayer(marker));
+      markers.forEach(marker => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(marker);
+        }
+      });
     });
     stationMarkersRef.current = {};
 
-    // Only draw route for followed train
+    // Draw route for followed train
     if (showRoute && followingTrainId) {
-      const followedTrain = allTrains.find(t => t.id === followingTrainId);
+      const followedTrain = scheduleTrains.find(t => t.id === followingTrainId);
       
-      if (followedTrain) {
-        if (followedTrain.isUserTrain) {
-          // Draw user train route
-          if (stationCoords.length > 1) {
-            const userRouteLine = L.polyline(stationCoords, {
-              color: followedTrain.color,
+      if (followedTrain && followedTrain.canTrack !== false) {
+        const route = trainRoutes[followedTrain.id];
+        
+        if (route && route.stations) {
+          console.log(`Drawing route for ${followedTrain.name}:`, route.stations);
+          
+          // Get coordinates for all stations in route
+          const routeCoords = route.stations
+            .map(stationName => stationCoordinates[stationName])
+            .filter(coord => coord);
+
+          if (routeCoords.length > 1) {
+            // Draw route line
+            const routeLine = L.polyline(routeCoords, {
+              color: route.color,
               weight: 5,
               opacity: 0.8,
-              dashArray: '12, 6'
+              dashArray: followedTrain.isUserBooked ? '12, 6' : '10, 6'
             }).addTo(mapInstanceRef.current);
 
-            routeLinesRef.current[followedTrain.id] = userRouteLine;
+            routeLinesRef.current[followedTrain.id] = routeLine;
+            console.log("Route line added to map");
 
-            // Add user train station markers
+            // Add station markers along the route
             stationMarkersRef.current[followedTrain.id] = [];
             
-            stations.forEach((station, idx) => {
-              const coords = stationCoordinates[station.name];
+            route.stations.forEach((stationName, idx) => {
+              const coords = stationCoordinates[stationName];
               if (coords) {
-                const isPassed = idx < currentStation;
-                const isCurrent = idx === currentStation;
+                const isCurrentStation = stationName === followedTrain.currentStation;
+                const isPassed = followedTrain.routeProgress > (idx / (route.stations.length - 1));
                 
                 const stationIcon = L.divIcon({
                   html: `<div style="
-                    width: 14px;
-                    height: 14px;
-                    background: ${isPassed || isCurrent ? followedTrain.color : '#6b7280'};
-                    border: 3px solid white;
+                    width: ${followedTrain.isUserBooked ? '16px' : '14px'};
+                    height: ${followedTrain.isUserBooked ? '16px' : '14px'};
+                    background: ${isPassed ? route.color : '#6b7280'};
+                    border: ${followedTrain.isUserBooked ? '3px' : '2px'} solid white;
                     border-radius: 50%;
                     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    ${isCurrent ? 'animation: pulse 1.5s infinite; transform: scale(1.4);' : ''}
+                    ${isCurrentStation ? 'animation: pulse 1.5s infinite; transform: scale(1.3);' : ''}
                   "></div>`,
-                  iconSize: [14, 14],
-                  className: 'user-station-marker'
+                  iconSize: [followedTrain.isUserBooked ? 16 : 14, followedTrain.isUserBooked ? 16 : 14],
+                  className: 'station-marker'
                 });
 
                 const marker = L.marker(coords, { icon: stationIcon })
                   .addTo(mapInstanceRef.current)
                   .bindPopup(`
-                    <div style="text-align: center; padding: 8px;">
-                      <div style="font-weight: bold; color: #065f46;">${station.name}</div>
-                      <div style="font-size: 12px; color: #6b7280;">${station.time}</div>
-                      ${isCurrent ? '<div style="font-size: 12px; color: #10b981; margin-top: 4px; font-weight: 600;">🎫 Your Train Here</div>' : ''}
-                      ${isPassed ? '<div style="font-size: 12px; color: #6b7280; margin-top: 4px;">✅ Passed</div>' : ''}
-                      ${!isPassed && !isCurrent ? '<div style="font-size: 12px; color: #3b82f6; margin-top: 4px;">⏳ Coming</div>' : ''}
+                    <div style="text-align: center; padding: 10px;">
+                      <div style="font-weight: bold; color: #1f2937; margin-bottom: 4px;">${stationName}</div>
+                      <div style="font-size: 12px; color: #6b7280; margin-bottom: 6px;">
+                        ${followedTrain.name} Route
+                      </div>
+                      ${followedTrain.isUserBooked ? '<div style="font-size: 12px; color: #10b981; margin: 4px 0; font-weight: 600;">🎫 Your Booked Train</div>' : ''}
+                      ${isCurrentStation ? '<div style="font-size: 12px; color: ' + route.color + '; font-weight: 600; margin: 4px 0;">🚄 Train Here Now</div>' : ''}
+                      ${isPassed && !isCurrentStation ? '<div style="font-size: 12px; color: #6b7280; margin: 4px 0;">✅ Passed</div>' : ''}
+                      ${!isPassed && !isCurrentStation ? '<div style="font-size: 12px; color: #3b82f6; margin: 4px 0;">⏳ Upcoming</div>' : ''}
                     </div>
                   `);
 
                 stationMarkersRef.current[followedTrain.id].push(marker);
               }
             });
-          }
-        } else {
-          // Draw other train route
-          const route = trainRoutes[followedTrain.id];
-          if (route && route.stations) {
-            const routeCoords = route.stations
-              .map(stationName => stationCoordinates[stationName])
-              .filter(coord => coord);
 
-            if (routeCoords.length > 1) {
-              const routeLine = L.polyline(routeCoords, {
-                color: route.color,
-                weight: 5,
-                opacity: 0.8,
-                dashArray: '10, 6'
-              }).addTo(mapInstanceRef.current);
-
-              routeLinesRef.current[followedTrain.id] = routeLine;
-
-              // Add station markers for followed train
-              stationMarkersRef.current[followedTrain.id] = [];
-              
-              route.stations.forEach((stationName, idx) => {
-                const coords = stationCoordinates[stationName];
-                if (coords) {
-                  const isCurrentStation = stationName === followedTrain.currentStation;
-                  const isPassed = followedTrain.routeProgress > (idx / (route.stations.length - 1));
-                  
-                  const stationIcon = L.divIcon({
-                    html: `<div style="
-                      width: 12px;
-                      height: 12px;
-                      background: ${isPassed ? route.color : '#6b7280'};
-                      border: 2px solid white;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                      ${isCurrentStation ? 'animation: pulse 1.5s infinite; transform: scale(1.3);' : ''}
-                    "></div>`,
-                    iconSize: [12, 12],
-                    className: 'station-marker'
-                  });
-
-                  const marker = L.marker(coords, { icon: stationIcon })
-                    .addTo(mapInstanceRef.current)
-                    .bindPopup(`
-                      <div style="text-align: center; padding: 8px;">
-                        <div style="font-weight: bold; color: #1f2937;">${stationName}</div>
-                        <div style="font-size: 12px; color: #6b7280; margin: 4px 0;">
-                          ${followedTrain.name} Route
-                        </div>
-                        ${isCurrentStation ? '<div style="font-size: 12px; color: ' + route.color + '; font-weight: 600;">🚄 Train Here Now</div>' : ''}
-                        ${isPassed && !isCurrentStation ? '<div style="font-size: 12px; color: #6b7280;">✅ Passed</div>' : ''}
-                        ${!isPassed && !isCurrentStation ? '<div style="font-size: 12px; color: #3b82f6;">⏳ Upcoming</div>' : ''}
-                      </div>
-                    `);
-
-                  stationMarkersRef.current[followedTrain.id].push(marker);
-                }
-              });
-            }
+            console.log(`Added ${route.stations.length} station markers`);
           }
         }
       }
     }
-  }, [showRoute, followingTrainId, allTrains, stationCoords, currentStation, stations, trainData]);
-
-  // Auto-follow function
-  const startAutoFollow = (trainId) => {
-    setIsFollowing(true);
-    setFollowingTrainId(trainId);
-    
-    if (followingIntervalRef.current) {
-      clearInterval(followingIntervalRef.current);
-    }
-
-    followingIntervalRef.current = setInterval(() => {
-      const train = allTrains.find(t => t.id === trainId);
-      if (train && mapInstanceRef.current) {
-        mapInstanceRef.current.setView([train.lat, train.lng], 11, {
-          animate: true,
-          duration: 1
-        });
-      }
-    }, 1000);
-
-    const train = allTrains.find(t => t.id === trainId);
-    if (train && onTrainFollow) {
-      onTrainFollow(train);
-    }
-  };
-
-  // Stop auto-follow
-  const stopAutoFollow = () => {
-    setIsFollowing(false);
-    setFollowingTrainId(null);
-    
-    if (followingIntervalRef.current) {
-      clearInterval(followingIntervalRef.current);
-      followingIntervalRef.current = null;
-    }
-
-    if (onStopFollowing) {
-      onStopFollowing();
-    }
-  };
-
-  // Handle train click
-  const handleTrainClick = (train) => {
-    if (followingTrainId === train.id) {
-      stopAutoFollow();
-    } else {
-      startAutoFollow(train.id);
-    }
-  };
+  }, [showRoute, followingTrainId, scheduleTrains, trainData]);
 
   // Update train markers
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
+    console.log("Updating train markers...");
+
+    // Clear existing markers
     Object.values(trainMarkersRef.current).forEach(marker => {
       mapInstanceRef.current.removeLayer(marker);
     });
     trainMarkersRef.current = {};
 
-    allTrains.forEach(train => {
-      const isFollowed = followingTrainId === train.id;
-      const isUserTrain = train.isUserTrain;
-      
-      const trainIcon = L.divIcon({
-        html: `<div style="
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: ${isUserTrain ? '48px' : '40px'};
-          height: ${isUserTrain ? '48px' : '40px'};
-          background: ${isUserTrain ? 'linear-gradient(135deg, #10b981, #059669)' : train.color || '#3b82f6'};
-          border: 3px solid white;
-          border-radius: 50%;
-          font-size: ${isUserTrain ? '20px' : '16px'};
-          color: white;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-          cursor: pointer;
-          transform: ${isFollowed ? 'scale(1.2)' : 'scale(1)'};
-          transition: all 0.3s ease;
-          ${isFollowed ? 'animation: pulse 2s infinite;' : ''}
-          z-index: ${isFollowed ? '1001' : '1000'};
-        ">${isUserTrain ? '🎫' : '🚄'}</div>`,
-        iconSize: [isUserTrain ? 48 : 40, isUserTrain ? 48 : 40],
-        className: `train-marker ${isFollowed ? 'following' : ''}`
-      });
+    // Add train markers
+    scheduleTrains.forEach(train => {
+      try {
+        const isFollowed = followingTrainId === train.id;
+        const isUserBooked = train.isUserBooked;
+        
+        const trainIcon = L.divIcon({
+          html: `<div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: ${isUserBooked ? '52px' : '40px'};
+            height: ${isUserBooked ? '52px' : '40px'};
+            background: ${isUserBooked ? 'linear-gradient(135deg, #10b981, #059669)' : train.color};
+            border: ${isUserBooked ? '4px' : '3px'} solid white;
+            border-radius: 50%;
+            font-size: ${isUserBooked ? '22px' : '16px'};
+            color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transform: ${isFollowed ? 'scale(1.2)' : 'scale(1)'};
+            transition: all 0.3s ease;
+            ${isFollowed ? 'animation: pulse 2s infinite;' : ''}
+            ${isUserBooked ? 'animation: bounce 2s infinite;' : ''}
+            z-index: ${isFollowed ? '1001' : isUserBooked ? '1000' : '999'};
+          ">${isUserBooked ? '🎫' : '🚄'}</div>`,
+          iconSize: [isUserBooked ? 52 : 40, isUserBooked ? 52 : 40],
+          className: `train-marker`
+        });
 
-      const marker = L.marker([train.lat, train.lng], { icon: trainIcon })
-        .addTo(mapInstanceRef.current)
-        .on('click', () => handleTrainClick(train))
-        .bindPopup(`
-          <div style="padding: 12px; min-width: 240px;">
-            <div style="font-weight: bold; color: ${isUserTrain ? '#065f46' : '#1f2937'}; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-              ${isUserTrain ? '🎫' : '🚄'} ${train.name}
-              ${isUserTrain ? '<span style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 10px;">MY TRAIN</span>' : ''}
+        const marker = L.marker([train.lat, train.lng], { icon: trainIcon })
+          .addTo(mapInstanceRef.current)
+          .on('click', () => handleTrainClick(train))
+          .bindPopup(`
+            <div style="padding: 12px; min-width: 200px;">
+              <div style="font-weight: bold; margin-bottom: 8px;">
+                ${isUserBooked ? '🎫' : '🚄'} ${train.name}
+                ${isUserBooked ? '<span style="background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 8px; font-size: 10px; margin-left: 8px;">MY TICKET</span>' : ''}
+              </div>
+              <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">${train.trainNumber} • ${train.class}</div>
+              <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">${train.route}</div>
+              <div style="font-size: 12px; margin-bottom: 8px;">
+                📍 ${train.currentStation} → ${train.nextStation}
+              </div>
+              <div style="font-size: 12px; margin-bottom: 8px;">
+                Speed: ${train.speed} km/h | Progress: ${Math.round((train.routeProgress || 0) * 100)}%
+              </div>
+              ${isUserBooked && train.ticketDetails ? `
+                <div style="background: #dcfce7; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                  <div style="font-size: 11px; color: #065f46; font-weight: 600;">🎫 Your Booking:</div>
+                  <div style="font-size: 11px; color: #065f46;">Seats: ${train.ticketDetails.seats?.join(', ') || 'N/A'}</div>
+                  <div style="font-size: 11px; color: #065f46;">Passengers: ${train.ticketDetails.passengers || 1}</div>
+                </div>
+              ` : ''}
+              <button 
+                onclick="window.toggleTrainFollow(${train.id})" 
+                style="width: 100%; background: ${isFollowed ? '#dc2626' : (isUserBooked ? '#10b981' : train.color)}; color: white; padding: 8px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;"
+              >
+                ${isFollowed ? '🛑 Stop Following' : (isUserBooked ? '🎫 Track My Train' : '🎯 Follow Train')}
+              </button>
             </div>
-            <div style="font-size: 12px; color: #6b7280; margin: 4px 0;">
-              ${train.trainNumber} • ${train.class || 'N/A'}
-            </div>
-            <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">${train.route}</div>
-            <div style="background: #f9fafb; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-              <div style="font-size: 11px; color: #6b7280;">Current Position:</div>
-              <div style="font-size: 13px; font-weight: 600; color: #1f2937;">${train.currentStation}</div>
-              <div style="font-size: 11px; color: #6b7280;">Next: ${train.nextStation}</div>
-              ${train.routeProgress ? `<div style="font-size: 11px; color: #3b82f6;">Progress: ${Math.round(train.routeProgress * 100)}%</div>` : ''}
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
-              <span style="color: ${train.status === 'TEPAT WAKTU' ? '#059669' : '#f59e0b'}; font-weight: 600;">${train.status}</span>
-              <span style="font-weight: 600;">${train.speed} km/h</span>
-            </div>
-            ${train.departure ? `<div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Depart: ${train.departure} | Arrive: ${train.arrival}</div>` : ''}
-            ${train.platform ? `<div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">${train.platform}</div>` : ''}
-            ${train.delay > 0 ? `<div style="font-size: 12px; color: #f59e0b; margin-bottom: 8px;">Delay: +${train.delay} min</div>` : ''}
-            <button 
-              onclick="window.toggleTrainFollow(${train.id})" 
-              style="
-                width: 100%;
-                background: ${isFollowed ? '#dc2626' : train.color || '#059669'};
-                color: white;
-                padding: 8px 12px;
-                border: none;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: 600;
-                cursor: pointer;
-              "
-            >
-              ${isFollowed ? '🛑 Stop Following' : '🎯 Follow Train'}
-            </button>
-          </div>
-        `);
+          `);
 
-      trainMarkersRef.current[train.id] = marker;
+        trainMarkersRef.current[train.id] = marker;
+        
+      } catch (error) {
+        console.error(`Error creating marker for train ${train.id}:`, error);
+      }
     });
-  }, [allTrains, followingTrainId, trainData]);
+
+    console.log("Train markers updated");
+    
+  }, [scheduleTrains, followingTrainId, bookingVersion]);
 
   // Global function for popup buttons
   useEffect(() => {
@@ -610,291 +545,374 @@ export default function LiveMap({
     return () => {
       delete window.toggleTrainFollow;
     };
-  }, [followingTrainId, allTrains]);
+  }, [followingTrainId]);
 
-  // Center map to all trains
+  // Functions
+  const startAutoFollow = (trainId) => {
+    const train = scheduleTrains.find(t => t.id === trainId);
+    if (!train || train.canTrack === false) {
+      alert("Kereta ini tidak dapat dilacak.");
+      return;
+    }
+    setIsFollowing(true);
+    setFollowingTrainId(trainId);
+    
+    if (followingIntervalRef.current) {
+      clearInterval(followingIntervalRef.current);
+    }
+
+    followingIntervalRef.current = setInterval(() => {
+      const train = scheduleTrains.find(t => t.id === trainId);
+      if (train && mapInstanceRef.current) {
+        mapInstanceRef.current.setView([train.lat, train.lng], 11, {
+          animate: true,
+          duration: 1
+        });
+      }
+    }, 1000);
+  };
+
+  const stopAutoFollow = () => {
+    setIsFollowing(false);
+    setFollowingTrainId(null);
+    
+    if (followingIntervalRef.current) {
+      clearInterval(followingIntervalRef.current);
+      followingIntervalRef.current = null;
+    }
+  };
+
+  const handleTrainClick = (train) => {
+    if (followingTrainId === train.id) {
+      stopAutoFollow();
+    } else {
+      startAutoFollow(train.id);
+    }
+  };
+
   const centerToAllTrains = () => {
-    if (allTrains.length > 0 && mapInstanceRef.current) {
-      const bounds = L.latLngBounds(allTrains.map(train => [train.lat, train.lng]));
+    if (scheduleTrains.length > 0 && mapInstanceRef.current) {
+      const bounds = L.latLngBounds(scheduleTrains.map(train => [train.lat, train.lng]));
       mapInstanceRef.current.fitBounds(bounds.pad(0.1));
       stopAutoFollow();
     }
   };
 
-  // Real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setRealTimeUpdate(new Date());
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (followingIntervalRef.current) {
-        clearInterval(followingIntervalRef.current);
-      }
-    };
-  }, []);
-
   return (
     <div className="bg-white h-screen flex">
       {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-0' : 'w-80'} transition-all duration-300 bg-white border-r border-gray-200 flex flex-col overflow-hidden`}>
+      <div className={`${sidebarCollapsed ? 'w-0' : 'w-72'} transition-all duration-300 bg-white border-r border-gray-200 flex flex-col overflow-hidden`}>
         {!sidebarCollapsed && (
           <>
-            {/* Sidebar Header */}
-            <div className="p-4 border-b bg-gray-50">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                  <Target size={16} />
-                  Klik kereta untuk auto-follow
+            {/* Header */}
+            <div className="p-2 border-b bg-gray-50">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1">
+                  <Target size={12} />
+                  Live Tracking
                 </h3>
-                <button onClick={() => setSidebarCollapsed(true)} className="p-1 hover:bg-gray-200 rounded">
-                  <X size={16} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {onRefreshBookings && (
+                    <button
+                      onClick={onRefreshBookings}
+                      className="p-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
+                      title="Refresh Bookings"
+                    >
+                      <RotateCw size={8} />
+                    </button>
+                  )}
+                  
+                  {onClearAllBookings && (
+                    <button
+                      onClick={() => {
+                        if (confirm("Hapus semua booking?")) {
+                          onClearAllBookings();
+                        }
+                      }}
+                      className="p-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                      title="Clear All Bookings"
+                    >
+                      <X size={8} />
+                    </button>
+                  )}
+                  
+                  {debugMode && (
+                    <button
+                      onClick={() => setDebugMode(false)}
+                      className="p-1 bg-green-100 text-green-700 rounded text-xs"
+                    >
+                      <Bug size={8} />
+                    </button>
+                  )}
+                  <button onClick={() => setSidebarCollapsed(true)} className="p-1 hover:bg-gray-200 rounded">
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
+
+              {debugMode && (
+                <div className="mb-1 p-1 bg-green-50 border border-green-200 rounded text-xs">
+                  <div className="text-green-700 text-xs">
+                    Props: {userBookings?.length || 0} | My: {userBookedCount} | Version: {bookingVersion} | Following: {followingTrainId || 'none'}
+                  </div>
+                </div>
+              )}
               
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={12} />
                 <input
                   type="text"
-                  placeholder="Cari kereta atau rute..."
+                  placeholder="Search..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-7 pr-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-1 mt-1">
                 <button
                   onClick={centerToAllTrains}
-                  className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-1"
+                  className="flex-1 bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-1"
                 >
-                  <RotateCcw size={12} />
-                  Center All
+                  <RotateCcw size={8} />
+                  Center
                 </button>
                 {isFollowing && (
                   <button
                     onClick={stopAutoFollow}
-                    className="flex-1 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-700 transition flex items-center justify-center gap-1"
+                    className="flex-1 bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-red-700 transition flex items-center justify-center gap-1"
                   >
-                    <X size={12} />
-                    Stop Follow
+                    <X size={8} />
+                    Stop
                   </button>
                 )}
               </div>
             </div>
 
-            {/* User Train Priority */}
-            {userTrain && (
-              <div className="p-4 bg-green-50 border-b">
-                <div 
-                  className={`bg-white rounded-lg border-2 p-3 cursor-pointer transition-all ${
-                    followingTrainId === userTrain.id 
-                      ? 'border-green-400 bg-green-50 shadow-md' 
-                      : 'border-green-200 hover:border-green-300'
-                  }`}
-                  onClick={() => handleTrainClick(userTrain)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-semibold text-green-800 flex items-center gap-2">
-                      🎫 {userTrain.name}
-                      {followingTrainId === userTrain.id && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      )}
-                    </div>
-                    <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
-                      MY TRAIN
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600 mb-1">{userTrain.route}</div>
-                  <div className="text-xs text-gray-500 mb-2">
-                    📍 {userTrain.currentStation} → {userTrain.nextStation}
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-green-600 font-semibold">{userTrain.status}</span>
-                    <span className="text-gray-600">⚡ {userTrain.speed} km/h</span>
-                  </div>
+            {userBookedCount > 0 && (
+              <div className="px-2 py-1 bg-green-100 border-b border-green-200">
+                <div className="text-center">
+                  <div className="text-xs font-bold text-green-800">{userBookedCount} My Tickets</div>
                 </div>
               </div>
             )}
 
             {/* Train List */}
             <div className="flex-1 overflow-y-auto">
-              <div className="p-4">
-                <h4 className="font-semibold text-gray-800 mb-3">
-                  Semua Kereta ({filteredTrains.length})
-                </h4>
-                <div className="space-y-3">
-                  {filteredTrains.map((train) => (
+              <div className="p-2">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-1">
+                    📅 Today ({filteredScheduleTrains.length})
+                    <div className="text-xs bg-blue-100 text-blue-700 px-1 py-0.5 rounded-full text-xs">Live</div>
+                  </h4>
+                  {!debugMode && (
+                    <button
+                      onClick={() => setDebugMode(true)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <Bug size={8} className="text-gray-400" />
+                    </button>
+                  )}
+                </div>
+                
+                <div className="space-y-1.5">
+                  {filteredScheduleTrains.map((train) => (
                     <div
                       key={train.id}
-                      className={`bg-white rounded-lg border p-3 cursor-pointer transition-all ${
-                        followingTrainId === train.id 
-                          ? 'border-blue-400 bg-blue-50 shadow-md' 
-                          : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                      className={`rounded-lg border-2 p-1.5 cursor-pointer transition-all ${
+                        train.isUserBooked
+                          ? followingTrainId === train.id
+                            ? 'bg-gradient-to-r from-green-50 to-green-100 border-green-400 shadow-lg transform scale-105'
+                            : 'bg-gradient-to-r from-green-50 to-green-100 border-green-300 hover:border-green-400 hover:shadow-md'
+                          : followingTrainId === train.id 
+                            ? 'bg-blue-50 border-blue-400 shadow-md' 
+                            : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
                       }`}
                       onClick={() => handleTrainClick(train)}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-semibold text-gray-800 flex items-center gap-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-semibold text-gray-800 flex items-center gap-1">
                           <div 
-                            className="w-3 h-3 rounded-full" 
+                            className={`w-2 h-2 rounded-full ${train.isUserBooked ? 'animate-pulse' : ''}`}
                             style={{ backgroundColor: train.color }}
                           ></div>
-                          {train.name}
+                          <span className="truncate">{train.name}</span>
                           {followingTrainId === train.id && (
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                            <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        <div className="flex items-center gap-1">
+                          {train.isUserBooked && (
+                            <span className="text-xs bg-green-200 text-green-800 px-1 py-0.5 rounded-full font-bold">
+                              🎫
+                            </span>
+                          )}
+                          <span className={`text-xs px-1 py-0.5 rounded-full font-medium ${
                             train.status === 'TEPAT WAKTU'
                               ? 'bg-green-100 text-green-700'
                               : 'bg-orange-100 text-orange-700'
                           }`}>
-                            {train.status}
+                            {train.status === 'TEPAT WAKTU' ? 'OK' : 'LATE'}
                           </span>
                           {followingTrainId === train.id && (
-                            <div className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                              <Target size={10} />
-                              LOCKED
-                            </div>
+                            <Target size={6} className="text-blue-600" />
                           )}
                         </div>
                       </div>
-                      <div className="text-sm text-gray-600 mb-1">{train.route}</div>
-                      <div className="text-xs text-gray-500 mb-2">
+
+                      <div className="text-xs text-gray-600 mb-1 truncate">{train.route}</div>
+                      <div className="text-xs text-gray-500 mb-1">
                         📍 {train.currentStation} → {train.nextStation}
                       </div>
+
                       <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500">⚡ {train.speed} km/h</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">⚡{train.speed}</span>
                           <span className="text-gray-500">• {train.class}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           {train.delay > 0 && <span className="text-orange-600">+{train.delay}m</span>}
-                          {train.routeProgress && (
-                            <span className="text-blue-600">{Math.round(train.routeProgress * 100)}%</span>
-                          )}
+                          <span className="text-blue-600">{Math.round((train.routeProgress || 0) * 100)}%</span>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {train.departure} - {train.arrival} • {train.platform}
+
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {train.departure} - {train.arrival}
                       </div>
+
+                      {train.isUserBooked && train.ticketDetails && (
+                        <div className="mt-1 pt-1 border-t border-green-300">
+                          <div className="text-xs text-green-800 bg-green-200 px-1 py-0.5 rounded flex items-center justify-between">
+                            <span>🎫 {train.ticketDetails.seats?.join(', ') || 'N/A'}</span>
+                            {onRemoveBooking && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Remove booking for ${train.name}?`)) {
+                                    onRemoveBooking(train.userBooking.id || train.userBooking.bookingId);
+                                  }
+                                }}
+                                className="text-red-600 hover:text-red-800 ml-1"
+                                title="Remove Booking"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+
+                {userBookings.length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="text-gray-400 text-sm mb-2">🚂</div>
+                    <div className="text-xs text-gray-500 mb-2">No bookings found</div>
+                    <div className="text-xs text-gray-400">Click any train to track it</div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Route Legend */}
-            <div className="p-4 border-t bg-gray-50">
-              <div className="text-xs text-gray-600 mb-2">
-                💡 Route line hanya muncul saat kereta di-follow
+            {showLegend && (
+              <div className="p-1 border-t bg-gray-50">
+                <div className="text-xs text-gray-600 mb-0.5">
+                  🎫 = your ticket | Click train to follow | Route shows when following
+                </div>
+                <div className="text-center mt-1">
+                  <button
+                    onClick={() => setShowLegend(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    Hide Info
+                  </button>
+                </div>
               </div>
-              {isFollowing && currentFollowingTrain && (
-                <div className="flex items-center gap-2 text-xs">
-                  <div 
-                    className="w-4 h-1 rounded"
-                    style={{ backgroundColor: currentFollowingTrain.color }}
-                  ></div>
-                  <span className="text-gray-600">
-                    Route: {currentFollowingTrain.name}
-                  </span>
-                </div>
-              )}
-              {isFollowing && currentFollowingTrain && (
-                <div className="text-xs text-blue-600 font-semibold flex items-center gap-1 mt-2">
-                  <RotateCw size={12} className="animate-spin" />
-                  Following: {currentFollowingTrain.name}
-                </div>
-              )}
-            </div>
+            )}
+
+            {!showLegend && (
+              <div className="p-1 border-t bg-gray-50 text-center">
+                <button
+                  onClick={() => setShowLegend(true)}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center gap-1 w-full"
+                >
+                  <Info size={8} />
+                  Info
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* Map Container */}
       <div className="flex-1 relative">
-        {/* Map Header */}
-        <div className="absolute top-0 left-0 right-0 bg-white border-b border-gray-200 p-4 z-10">
+        <div className="absolute top-0 left-0 right-0 bg-white border-b border-gray-200 p-2 z-10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {sidebarCollapsed && (
-                <button onClick={() => setSidebarCollapsed(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                  <Train size={20} />
+                <button onClick={() => setSidebarCollapsed(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <Train size={16} />
                 </button>
               )}
-              <h1 className="text-xl font-bold text-gray-800">KAI Live Tracker</h1>
-              <p className="text-sm text-gray-600">Pantau pergerakan real-time kereta api Indonesia</p>
+              <h1 className="text-base font-bold text-gray-800">KAI Live Tracker</h1>
+              <p className="text-xs text-gray-600">
+                {userBookedCount > 0 ? `${userBookedCount} booked` : 'Monitor'}
+              </p>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 onClick={centerToAllTrains}
-                className="p-2 rounded-lg hover:bg-gray-100 transition"
-                title="Center to all trains"
+                className="p-1.5 rounded hover:bg-gray-100 transition"
+                title="Center all"
               >
-                <RotateCcw size={16} />
+                <RotateCcw size={14} />
               </button>
               <button
                 onClick={() => setShowRoute(!showRoute)}
-                className={`p-2 rounded-lg transition ${showRoute ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
+                className={`p-1.5 rounded transition ${showRoute ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
                 title="Toggle routes"
               >
-                <Navigation size={16} />
+                <Navigation size={14} />
               </button>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-600 font-medium">Live Updates</span>
+              <div className="flex items-center gap-1 text-xs">
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${userBookedCount > 0 ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                <span className={`font-medium ${userBookedCount > 0 ? 'text-green-600' : 'text-blue-600'}`}>
+                  {userBookedCount > 0 ? `${userBookedCount}` : 'Live'}
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Map */}
         <div 
           ref={mapRef} 
-          style={{ height: '100%', width: '100%', paddingTop: '80px' }}
+          style={{ height: '100%', width: '100%', paddingTop: '50px' }}
           className="leaflet-container"
         />
 
-        {/* Following Indicator */}
         {isFollowing && currentFollowingTrain && (
-          <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 z-10">
-            <Target size={18} className="animate-pulse" />
+          <div className={`absolute bottom-4 left-4 px-2 py-1.5 rounded-lg shadow-lg flex items-center gap-2 z-10 text-white ${
+            currentFollowingTrain.isUserBooked ? 'bg-green-600' : 'bg-blue-600'
+          }`}>
+            <Target size={12} className="animate-pulse" />
             <div>
-              <div className="font-semibold text-sm">Auto-Following</div>
-              <div className="text-xs text-blue-200">
-                {currentFollowingTrain.name} • {currentFollowingTrain.speed} km/h
+              <div className="text-xs font-semibold">
+                {currentFollowingTrain.isUserBooked ? '🎫 My' : 'Tracking'}
               </div>
-              <div className="text-xs text-blue-200">
-                {currentFollowingTrain.currentStation} → {currentFollowingTrain.nextStation}
+              <div className={`text-xs ${currentFollowingTrain.isUserBooked ? 'text-green-200' : 'text-blue-200'}`}>
+                {currentFollowingTrain.name} • {currentFollowingTrain.speed}km/h
               </div>
             </div>
-            <button onClick={stopAutoFollow} className="ml-2 hover:bg-blue-700 rounded p-1 transition">
-              ✕
+            <button onClick={stopAutoFollow} className={`ml-1 rounded p-0.5 transition ${
+              currentFollowingTrain.isUserBooked ? 'hover:bg-green-700' : 'hover:bg-blue-700'
+            }`}>
+              <X size={10} />
             </button>
           </div>
         )}
-
-        {/* Real-time Status */}
-        <div className="absolute bottom-4 right-4 bg-white rounded-xl shadow-lg p-3 z-10">
-          <div className="flex items-center gap-2 text-sm">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="font-semibold text-gray-700">Live Tracking</span>
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            {isFollowing ? `Following 1 train` : `Monitoring ${allTrains.length} trains`}
-          </div>
-          <div className="text-xs text-gray-400">
-            Updated: {realTimeUpdate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
       </div>
 
       <style jsx>{`
@@ -906,6 +924,13 @@ export default function LiveMap({
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.7; transform: scale(1.1); }
+        }
+        
+        @keyframes bounce {
+          0%, 20%, 53%, 80%, 100% { transform: translateY(0); }
+          40%, 43% { transform: translateY(-10px); }
+          70% { transform: translateY(-5px); }
+          90% { transform: translateY(-2px); }
         }
       `}</style>
     </div>
